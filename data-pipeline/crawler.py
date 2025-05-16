@@ -29,20 +29,33 @@ def crawl_page(page_num, csv_writer, output_file, driver):
     url = base_url.format(page_num)
     print(f"\nCrawling page {page_num}: {url}")
     
-    try:
-        driver.get(url)
-        time.sleep(3)  
-    except Exception as e:
-        print(f"Failed to load page {page_num}: {e}")
-        return False
-
-    # Parse the page source with BeautifulSoup
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    # Try to load the page and find the course container up to 3 times
+    max_attempts = 3
+    attempt = 1
+    course_container = None
     
-    # Find the div with class="overflow-x-auto"
-    course_container = soup.find('div', class_='overflow-x-auto')
+    while attempt <= max_attempts:
+        try:
+            driver.get(url)
+            time.sleep(3)  # Wait for page to load
+            # Parse the page source with BeautifulSoup
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            # Find the div with class="overflow-x-auto"
+            course_container = soup.find('div', class_='overflow-x-auto')
+            if course_container:
+                break  # Success, exit retry loop
+            else:
+                print(f"Attempt {attempt}/{max_attempts}: No course container found on page {page_num}.")
+        except Exception as e:
+            print(f"Attempt {attempt}/{max_attempts}: Failed to load page {page_num}: {e}")
+        
+        attempt += 1
+        if attempt <= max_attempts:
+            print(f"Retrying page {page_num} in 2 seconds...")
+            time.sleep(2)
+    
     if not course_container:
-        print(f"No course container found on page {page_num}. Stopping.")
+        print(f"Failed to find course container on page {page_num} after {max_attempts} attempts. Stopping.")
         return False
 
     # Find all course items (assuming each course is in an <a> tag with href)
@@ -75,13 +88,14 @@ def crawl_page(page_num, csv_writer, output_file, driver):
         
         # Print data to console
         print(f"\nCourse: {course_name}")
+        print(f"URL: {course_url}")
         print("About this course:")
         for paragraph in course_description:
             print(f"- {paragraph}")
         print("-" * 50)
 
-        # Write to CSV
-        csv_writer.writerow([course_name, description_text])
+        # Write to CSV (include course_url)
+        csv_writer.writerow([course_name, course_url, description_text])
 
         # Short delay to avoid overwhelming the server
         time.sleep(1)
@@ -121,9 +135,10 @@ def main():
     page_num = 1
     max_pages = 42  
 
+    # Initialize CSV with additional column for URL
     with open(output_file, 'w', encoding='utf-8', newline='') as f:
         csv_writer = csv.writer(f)
-        csv_writer.writerow(["Course Name", "About This Course"])
+        csv_writer.writerow(["Course Name", "Course URL", "About This Course"])  # Updated header
 
     driver = setup_driver()
     try:
